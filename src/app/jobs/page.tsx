@@ -1,28 +1,73 @@
 'use client'
 
-import { useState } from 'react'
-import { TARGET_COMPANIES } from '@/lib/companies'
-import { ExternalLink, RefreshCw, Filter, CheckCircle, Clock, Send } from 'lucide-react'
+import { useState, useEffect, useCallback } from 'react'
+import { ExternalLink, RefreshCw, CheckCircle, Send, Loader2, Clock, Zap } from 'lucide-react'
 import clsx from 'clsx'
 
-// Mock job postings seeded from our company list
-const MOCK_JOBS = [
-  { id: '1', companyId: 'rippling', companyName: 'Rippling', title: 'Enterprise Account Executive', location: 'Remote', remote: true, url: 'https://www.rippling.com/careers', isGreenhouse: true, applied: true, icpScore: 94, salary: '$180K-$220K base / $360K-$440K OTE', datePosted: '2026-02-20' },
-  { id: '2', companyId: 'glean', companyName: 'Glean', title: 'Enterprise Account Executive - West', location: 'Remote / SF', remote: true, url: 'https://www.glean.com/careers', isGreenhouse: true, applied: false, icpScore: 95, salary: '$200K-$250K base / $400K-$500K OTE', datePosted: '2026-02-24' },
-  { id: '3', companyId: 'seismic', companyName: 'Seismic', title: 'Strategic Account Executive', location: 'San Diego, CA', remote: true, url: 'https://seismic.com/careers', isGreenhouse: false, applied: true, icpScore: 91, salary: '$175K-$210K base / $350K-$420K OTE', datePosted: '2026-02-18' },
-  { id: '4', companyId: 'databricks', companyName: 'Databricks', title: 'Enterprise Account Executive - CPG', location: 'Remote', remote: true, url: 'https://databricks.com/company/careers', isGreenhouse: true, applied: false, icpScore: 93, salary: '$220K-$270K base / $440K-$540K OTE', datePosted: '2026-02-26' },
-  { id: '5', companyId: 'tekion', companyName: 'Tekion', title: 'Enterprise Account Executive - Automotive', location: 'Remote', remote: true, url: 'https://tekion.com/careers', isGreenhouse: false, applied: false, icpScore: 87, salary: '$170K-$200K base / $340K-$400K OTE', datePosted: '2026-02-23' },
-  { id: '6', companyId: 'gong', companyName: 'Gong.io', title: 'Strategic Account Executive', location: 'Remote', remote: true, url: 'https://gong.io/careers', isGreenhouse: true, applied: false, icpScore: 86, salary: '$180K-$220K base / $360K-$440K OTE', datePosted: '2026-02-21' },
-  { id: '7', companyId: 'o9solutions', companyName: 'o9 Solutions', title: 'Enterprise AE - CPG & Retail', location: 'Remote', remote: true, url: 'https://o9solutions.com/careers', isGreenhouse: false, applied: false, icpScore: 88, salary: '$160K-$190K base / $320K-$380K OTE', datePosted: '2026-02-19' },
-  { id: '8', companyId: 'project44', companyName: 'project44', title: 'Enterprise Account Executive', location: 'Remote', remote: true, url: 'https://project44.com/careers', isGreenhouse: true, applied: false, icpScore: 85, salary: '$160K-$195K base / $320K-$390K OTE', datePosted: '2026-02-22' },
-  { id: '9', companyId: 'snowflake', companyName: 'Snowflake', title: 'Enterprise Account Executive - Retail & CPG', location: 'Remote', remote: true, url: 'https://careers.snowflake.com', isGreenhouse: false, applied: false, icpScore: 88, salary: '$200K-$240K base / $400K-$480K OTE', datePosted: '2026-02-15' },
-  { id: '10', companyId: 'informatica', companyName: 'Informatica', title: 'Strategic Account Executive', location: 'Remote', remote: true, url: 'https://informatica.com/company/careers.html', isGreenhouse: false, applied: false, icpScore: 88, salary: '$175K-$210K base / $350K-$420K OTE', datePosted: '2026-02-17' },
-]
+type Job = {
+  id: string
+  company_id: string
+  company_name: string
+  title: string
+  location: string | null
+  remote: boolean
+  url: string
+  date_posted: string | null
+  salary: string | null
+  is_greenhouse: boolean
+  applied: boolean
+  icp_score: number
+  source: string
+}
 
 export default function JobsPage() {
-  const [filter, setFilter] = useState<'all' | 'applied' | 'not-applied'>('all')
-  const [jobs, setJobs] = useState(MOCK_JOBS)
+  const [jobs, setJobs] = useState<Job[]>([])
+  const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
+  const [cached, setCached] = useState(false)
+  const [filter, setFilter] = useState<'all' | 'applied' | 'not-applied'>('all')
+
+  const fetchJobs = useCallback(async (refresh = false) => {
+    try {
+      const res = await fetch(`/api/jobs-scrape${refresh ? '?refresh=true' : ''}`)
+      const data = await res.json()
+      if (data.jobs) {
+        setJobs(data.jobs)
+        setCached(data.cached)
+      }
+    } catch (e) {
+      console.error('Failed to fetch jobs', e)
+    } finally {
+      setLoading(false)
+      setRefreshing(false)
+    }
+  }, [])
+
+  useEffect(() => { fetchJobs() }, [fetchJobs])
+
+  const handleRefresh = async () => {
+    setRefreshing(true)
+    await fetchJobs(true)
+  }
+
+  const handleMarkApplied = async (jobId: string) => {
+    setJobs(prev => prev.map(j => j.id === jobId ? { ...j, applied: true } : j))
+    await fetch('/api/applications', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        company_id: jobs.find(j => j.id === jobId)?.company_id,
+        company_name: jobs.find(j => j.id === jobId)?.company_name,
+        role: jobs.find(j => j.id === jobId)?.title,
+        status: 'Applied',
+        date_applied: new Date().toISOString().split('T')[0],
+        job_url: jobs.find(j => j.id === jobId)?.url,
+        is_greenhouse: jobs.find(j => j.id === jobId)?.is_greenhouse,
+        salary: jobs.find(j => j.id === jobId)?.salary,
+        score: jobs.find(j => j.id === jobId)?.icp_score || 0,
+      }),
+    })
+  }
 
   const filtered = jobs.filter(j => {
     if (filter === 'applied') return j.applied
@@ -30,14 +75,13 @@ export default function JobsPage() {
     return true
   })
 
-  const handleApply = (jobId: string) => {
-    setJobs(prev => prev.map(j => j.id === jobId ? { ...j, applied: true } : j))
-  }
-
-  const handleRefresh = async () => {
-    setRefreshing(true)
-    await new Promise(r => setTimeout(r, 1500))
-    setRefreshing(false)
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Loader2 size={24} className="text-accent animate-spin" />
+        <span className="ml-3 text-muted">Loading job postings...</span>
+      </div>
+    )
   }
 
   return (
@@ -46,24 +90,21 @@ export default function JobsPage() {
         <div>
           <h1 className="text-2xl font-display font-bold text-white">Job Openings</h1>
           <p className="text-muted text-sm mt-1">
-            Live roles at your target companies · Updated daily
+            {cached ? 'Cached results' : 'Live results'} · {jobs.length} roles found
           </p>
         </div>
-        <button
-          onClick={handleRefresh}
-          className="btn-secondary flex items-center gap-2"
-        >
+        <button onClick={handleRefresh} disabled={refreshing} className="btn-secondary flex items-center gap-2">
           <RefreshCw size={14} className={refreshing ? 'animate-spin' : ''} />
-          Refresh
+          {refreshing ? 'Scraping...' : 'Refresh Jobs'}
         </button>
       </div>
 
       {/* Stats */}
       <div className="grid grid-cols-3 gap-4">
         {[
-          { label: 'Total Open Roles', val: jobs.length, color: 'text-accent' },
+          { label: 'Total Roles', val: jobs.length, color: 'text-accent' },
           { label: 'Applied', val: jobs.filter(j => j.applied).length, color: 'text-signal' },
-          { label: 'Action Required', val: jobs.filter(j => !j.applied).length, color: 'text-warning' },
+          { label: 'To Apply', val: jobs.filter(j => !j.applied).length, color: 'text-warning' },
         ].map(s => (
           <div key={s.label} className="card text-center">
             <div className={clsx('text-3xl font-display font-bold', s.color)}>{s.val}</div>
@@ -71,6 +112,21 @@ export default function JobsPage() {
           </div>
         ))}
       </div>
+
+      {/* Scraping status */}
+      {!process.env.NEXT_PUBLIC_SERPAPI_KEY && (
+        <div className="card border-accent/20 bg-accent/5">
+          <div className="flex items-start gap-3">
+            <Zap size={16} className="text-accent flex-shrink-0 mt-0.5" />
+            <div>
+              <div className="text-sm font-medium text-white">Add SerpApi key to enable live job scraping</div>
+              <p className="text-xs text-muted mt-1">
+                Add <span className="font-mono text-accent">SERPAPI_KEY</span> to your Netlify environment variables to automatically pull live job postings from your target companies daily.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Filter tabs */}
       <div className="flex gap-2">
@@ -96,90 +152,78 @@ export default function JobsPage() {
 
       {/* Jobs list */}
       <div className="space-y-3">
-        {filtered.map((job, i) => (
+        {filtered.map(job => (
           <div
             key={job.id}
             className={clsx(
               'card flex items-center gap-4 transition-all duration-200',
-              job.applied ? 'opacity-70 hover:opacity-90' : 'hover:border-accent/30'
+              job.applied ? 'opacity-60 hover:opacity-80' : 'hover:border-accent/30'
             )}
           >
-            {/* Company initials */}
             <div className="flex-shrink-0 w-10 h-10 bg-elevated rounded-xl flex items-center justify-center border border-border">
               <span className="text-xs font-bold text-muted">
-                {job.companyName.slice(0, 2).toUpperCase()}
+                {job.company_name.slice(0, 2).toUpperCase()}
               </span>
             </div>
 
-            {/* Info */}
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="font-display font-semibold text-white">{job.title}</span>
-                {job.isGreenhouse && (
-                  <span className="badge badge-signal text-[10px]">Greenhouse</span>
-                )}
-                {job.applied && (
-                  <span className="badge badge-accent text-[10px]">Applied ✓</span>
-                )}
+                {job.is_greenhouse && <span className="badge badge-signal text-[10px]">Greenhouse</span>}
+                {job.applied && <span className="badge badge-accent text-[10px]">Applied ✓</span>}
+                {job.source === 'serpapi' && <span className="badge badge-muted text-[10px]">Live</span>}
               </div>
               <div className="text-xs text-muted mt-0.5">
-                {job.companyName} · {job.location}
+                {job.company_name} · {job.location || 'Remote'}
               </div>
-              {job.salary && (
-                <div className="text-xs text-signal font-mono mt-1">{job.salary}</div>
-              )}
+              {job.salary && <div className="text-xs text-signal font-mono mt-1">{job.salary}</div>}
             </div>
 
-            {/* Score + Date */}
             <div className="text-right flex-shrink-0 hidden sm:block">
               <div
                 className="text-lg font-display font-bold"
-                style={{ color: job.icpScore >= 90 ? '#00ff88' : job.icpScore >= 80 ? '#00d4ff' : '#ffaa00' }}
+                style={{ color: job.icp_score >= 90 ? '#00ff88' : job.icp_score >= 80 ? '#00d4ff' : '#ffaa00' }}
               >
-                {job.icpScore}
+                {job.icp_score}
               </div>
-              <div className="text-[10px] text-muted">{job.datePosted}</div>
+              {job.date_posted && <div className="text-[10px] text-muted">{job.date_posted}</div>}
             </div>
 
-            {/* Actions */}
             <div className="flex gap-2 flex-shrink-0">
-              <a
-                href={job.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="btn-ghost p-2"
-                title="Open job posting"
-              >
+              <a href={job.url} target="_blank" rel="noopener noreferrer" className="btn-ghost p-2" title="Open job posting">
                 <ExternalLink size={14} />
               </a>
               {!job.applied ? (
                 <button
-                  onClick={() => handleApply(job.id)}
+                  onClick={() => handleMarkApplied(job.id)}
                   className="btn-primary flex items-center gap-1.5 text-xs px-3 py-1.5"
                 >
-                  <Send size={12} />
-                  Apply
+                  <Send size={12} /> Apply
                 </button>
               ) : (
                 <div className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-signal font-medium">
-                  <CheckCircle size={12} />
-                  Applied
+                  <CheckCircle size={12} /> Applied
                 </div>
               )}
             </div>
           </div>
         ))}
+
+        {filtered.length === 0 && (
+          <div className="card text-center py-12">
+            <div className="text-muted text-sm">No jobs found. Try refreshing.</div>
+          </div>
+        )}
       </div>
 
-      {/* Manual apply queue note */}
+      {/* Manual apply note */}
       <div className="card border-accent/20 bg-accent/5">
         <div className="flex items-start gap-3">
           <Clock size={16} className="text-accent flex-shrink-0 mt-0.5" />
           <div>
-            <div className="text-sm font-medium text-white">Non-Greenhouse Roles — Action Required</div>
+            <div className="text-sm font-medium text-white">Marking applied auto-adds to your Pipeline CRM</div>
             <p className="text-xs text-muted mt-1">
-              {jobs.filter(j => !j.isGreenhouse && !j.applied).length} roles above require manual application. 
-              Click the external link icon to open the careers page directly. These are tracked in your pipeline automatically once you mark them applied.
+              When you click Apply and visit the job page, come back and click the apply button to log it. It will automatically appear in your Pipeline CRM with today's date.
             </p>
           </div>
         </div>
