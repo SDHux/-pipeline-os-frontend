@@ -1,16 +1,31 @@
 'use client'
 
 import { useState } from 'react'
-import { Send, Copy, Check, Linkedin, Mail, User, ChevronDown, Wand2 } from 'lucide-react'
+import { Send, Copy, Check, Mail, ChevronDown, Wand2 } from 'lucide-react'
 import clsx from 'clsx'
 
-const OUTREACH_QUEUE = [
+type Priority = 'high' | 'medium' | 'low'
+type OutreachType = 'linkedin' | 'email'
+
+type OutreachItem = {
+  id: string
+  company: string
+  contact: string
+  title: string
+  type: OutreachType
+  priority: Priority
+  reason: string
+  template: string
+  score: number
+}
+
+const OUTREACH_QUEUE: OutreachItem[] = [
   {
     id: '1',
     company: 'Glean',
     contact: 'Arvind Jain',
     title: 'CEO & Co-founder',
-    type: 'linkedin' as const,
+    type: 'linkedin',
     priority: 'high',
     reason: 'Hiring manager for Enterprise AE expansion. Applied Feb 20.',
     template: `Hi Arvind — I recently applied for the Enterprise AE role at Glean and wanted to connect directly. I've spent 10+ years selling data management and AI platforms into Fortune 1000 accounts (P&G, Walmart, Microsoft), and Glean's Work AI vision maps directly to the buyer conversations I'm already having. Would love to be considered as you build out the West enterprise team.`,
@@ -21,7 +36,7 @@ const OUTREACH_QUEUE = [
     company: 'Seismic',
     contact: 'Doug Winter',
     title: 'CEO',
-    type: 'linkedin' as const,
+    type: 'linkedin',
     priority: 'high',
     reason: 'Local San Diego company. Active screening conversation.',
     template: `Hi Doug — as a San Diego-based enterprise sales leader, Seismic is at the top of my list. I've built ARR across F1000 accounts in tech, CPG, and retail — exactly the verticals Seismic targets. Currently in conversation with your team and wanted to connect directly.`,
@@ -32,7 +47,7 @@ const OUTREACH_QUEUE = [
     company: 'Rippling',
     contact: 'Matt Plank',
     title: 'President',
-    type: 'linkedin' as const,
+    type: 'linkedin',
     priority: 'medium',
     reason: 'Interview in progress. Connection reinforces pipeline.',
     template: `Hi Matt — currently interviewing for an Enterprise AE role at Rippling and excited about the platform's compound product strategy. My background is closing complex enterprise deals at Salsify, Akeneo, and CommerceIQ — all multi-stakeholder, technical sales against incumbent vendors. Happy to share more context.`,
@@ -43,7 +58,7 @@ const OUTREACH_QUEUE = [
     company: 'o9 Solutions',
     contact: 'Chakri Gottemukkala',
     title: 'CEO',
-    type: 'linkedin' as const,
+    type: 'linkedin',
     priority: 'medium',
     reason: 'Strong vertical overlap: CPG, retail, automotive. No active application yet.',
     template: `Hi Chakri — I've spent years selling data management solutions into P&G, Walmart, and Ford — the exact accounts o9 serves. Your supply chain AI platform is a natural next step in my career trajectory. Would love to explore how I could contribute to your enterprise GTM team.`,
@@ -54,7 +69,7 @@ const OUTREACH_QUEUE = [
     company: 'Databricks',
     contact: 'Ali Ghodsi',
     title: 'CEO',
-    type: 'email' as const,
+    type: 'email',
     priority: 'low',
     reason: 'Applied Feb 19. Warm outreach to reinforce application.',
     template: `Hi Ali,\n\nI recently applied for the Enterprise AE – CPG role at Databricks and wanted to reach out directly. Over the past decade I've sold data and AI platforms into Fortune 1000 accounts across CPG, retail, and automotive — including P&G, Walmart, and Microsoft.\n\nDatabricks' lakehouse vision is exactly what those buyers need, and I believe my existing relationships and technical sales experience would accelerate your enterprise motion in those verticals.\n\nI'd welcome the chance to connect.\n\nBest,\nMark Huckins\nmarkhuckinsprofile.netlify.app`,
@@ -62,7 +77,7 @@ const OUTREACH_QUEUE = [
   },
 ]
 
-const PRIORITY_COLORS = {
+const PRIORITY_COLORS: Record<Priority, string> = {
   high: 'text-danger border-danger/30 bg-danger/5',
   medium: 'text-warning border-warning/30 bg-warning/5',
   low: 'text-muted border-border bg-surface',
@@ -83,7 +98,11 @@ export default function OutreachPage() {
   }
 
   const handleSent = (id: string) => {
-    setSent(prev => new Set([...prev, id]))
+    setSent(prev => {
+      const next = new Set(prev)
+      next.add(id)
+      return next
+    })
   }
 
   return (
@@ -130,11 +149,7 @@ export default function OutreachPage() {
               onClick={() => setExpanded(expanded === item.id ? null : item.id)}
             >
               <div className="flex-shrink-0 w-9 h-9 bg-elevated rounded-lg flex items-center justify-center border border-border">
-                {item.type === 'linkedin' ? (
-                  <Linkedin size={14} className="text-[#0077b5]" />
-                ) : (
-                  <Mail size={14} className="text-muted" />
-                )}
+                <Mail size={14} className="text-muted" />
               </div>
 
               <div className="flex-1 min-w-0">
@@ -187,7 +202,6 @@ export default function OutreachPage() {
                       rel="noopener noreferrer"
                       className="btn-primary flex items-center gap-2 text-xs"
                     >
-                      <Linkedin size={13} />
                       Open LinkedIn
                     </a>
                   ) : (
