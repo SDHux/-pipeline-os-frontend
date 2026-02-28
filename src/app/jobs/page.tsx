@@ -49,15 +49,11 @@ export default function JobsPage() {
   }
 
   const handleMarkApplied = async (jobId: string) => {
-    // Only update the specific job
     const job = jobs.find(j => j.id === jobId)
-    if (!job || job.applied) return
-    
+    if (!job || job.applied || applying) return
+
     setApplying(jobId)
-    
-    // Update only this job in state
-    setJobs(prev => prev.map(j => j.id === jobId ? { ...j, applied: true } : j))
-    
+
     try {
       await fetch('/api/applications', {
         method: 'POST',
@@ -74,10 +70,10 @@ export default function JobsPage() {
           score: job.icp_score,
         }),
       })
+      // Only update this specific job by its unique id
+      setJobs(prev => prev.map(j => String(j.id) === String(jobId) ? { ...j, applied: true } : j))
     } catch (e) {
       console.error('Failed to log application', e)
-      // Revert if API call failed
-      setJobs(prev => prev.map(j => j.id === jobId ? { ...j, applied: false } : j))
     } finally {
       setApplying(null)
     }
