@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { ExternalLink, RefreshCw, CheckCircle, Send, Loader2, Clock, Zap } from 'lucide-react'
+import { ExternalLink, RefreshCw, CheckCircle, Send, Loader2, Clock } from 'lucide-react'
 import clsx from 'clsx'
 
 type Job = {
@@ -24,17 +24,13 @@ export default function JobsPage() {
   const [jobs, setJobs] = useState<Job[]>([])
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
-  const [cached, setCached] = useState(false)
   const [filter, setFilter] = useState<'all' | 'applied' | 'not-applied'>('all')
 
   const fetchJobs = useCallback(async (refresh = false) => {
     try {
       const res = await fetch(`/api/jobs-scrape${refresh ? '?refresh=true' : ''}`)
       const data = await res.json()
-      if (data.jobs) {
-        setJobs(data.jobs)
-        setCached(data.cached)
-      }
+      if (data.jobs) setJobs(data.jobs)
     } catch (e) {
       console.error('Failed to fetch jobs', e)
     } finally {
@@ -51,20 +47,22 @@ export default function JobsPage() {
   }
 
   const handleMarkApplied = async (jobId: string) => {
+    const job = jobs.find(j => j.id === jobId)
+    if (!job) return
     setJobs(prev => prev.map(j => j.id === jobId ? { ...j, applied: true } : j))
     await fetch('/api/applications', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        company_id: jobs.find(j => j.id === jobId)?.company_id,
-        company_name: jobs.find(j => j.id === jobId)?.company_name,
-        role: jobs.find(j => j.id === jobId)?.title,
+        company_id: job.company_id,
+        company_name: job.company_name,
+        role: job.title,
         status: 'Applied',
         date_applied: new Date().toISOString().split('T')[0],
-        job_url: jobs.find(j => j.id === jobId)?.url,
-        is_greenhouse: jobs.find(j => j.id === jobId)?.is_greenhouse,
-        salary: jobs.find(j => j.id === jobId)?.salary,
-        score: jobs.find(j => j.id === jobId)?.icp_score || 0,
+        job_url: job.url,
+        is_greenhouse: job.is_greenhouse,
+        salary: job.salary,
+        score: job.icp_score,
       }),
     })
   }
@@ -90,7 +88,7 @@ export default function JobsPage() {
         <div>
           <h1 className="text-2xl font-display font-bold text-white">Job Openings</h1>
           <p className="text-muted text-sm mt-1">
-            {cached ? 'Cached results' : 'Live results'} · {jobs.length} roles found
+            {jobs.length} roles from your target companies
           </p>
         </div>
         <button onClick={handleRefresh} disabled={refreshing} className="btn-secondary flex items-center gap-2">
@@ -112,21 +110,6 @@ export default function JobsPage() {
           </div>
         ))}
       </div>
-
-      {/* Scraping status */}
-      {!process.env.NEXT_PUBLIC_SERPAPI_KEY && (
-        <div className="card border-accent/20 bg-accent/5">
-          <div className="flex items-start gap-3">
-            <Zap size={16} className="text-accent flex-shrink-0 mt-0.5" />
-            <div>
-              <div className="text-sm font-medium text-white">Add SerpApi key to enable live job scraping</div>
-              <p className="text-xs text-muted mt-1">
-                Add <span className="font-mono text-accent">SERPAPI_KEY</span> to your Netlify environment variables to automatically pull live job postings from your target companies daily.
-              </p>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Filter tabs */}
       <div className="flex gap-2">
@@ -157,7 +140,7 @@ export default function JobsPage() {
             key={job.id}
             className={clsx(
               'card flex items-center gap-4 transition-all duration-200',
-              job.applied ? 'opacity-60 hover:opacity-80' : 'hover:border-accent/30'
+              job.applied ? 'opacity-60' : 'hover:border-accent/30'
             )}
           >
             <div className="flex-shrink-0 w-10 h-10 bg-elevated rounded-xl flex items-center justify-center border border-border">
@@ -190,7 +173,13 @@ export default function JobsPage() {
             </div>
 
             <div className="flex gap-2 flex-shrink-0">
-              <a href={job.url} target="_blank" rel="noopener noreferrer" className="btn-ghost p-2" title="Open job posting">
+              <a
+                href={job.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="btn-ghost p-2"
+                title="Open job posting"
+              >
                 <ExternalLink size={14} />
               </a>
               {!job.applied ? (
@@ -211,19 +200,22 @@ export default function JobsPage() {
 
         {filtered.length === 0 && (
           <div className="card text-center py-12">
-            <div className="text-muted text-sm">No jobs found. Try refreshing.</div>
+            <div className="text-muted text-sm">No jobs found.</div>
+            <button onClick={handleRefresh} disabled={refreshing} className="btn-primary mt-4 text-sm flex items-center gap-2 mx-auto">
+              <RefreshCw size={13} className={refreshing ? 'animate-spin' : ''} />
+              Load Jobs
+            </button>
           </div>
         )}
       </div>
 
-      {/* Manual apply note */}
       <div className="card border-accent/20 bg-accent/5">
         <div className="flex items-start gap-3">
           <Clock size={16} className="text-accent flex-shrink-0 mt-0.5" />
           <div>
-            <div className="text-sm font-medium text-white">Marking applied auto-adds to your Pipeline CRM</div>
+            <div className="text-sm font-medium text-white">Clicking Apply opens the job and logs it to your Pipeline CRM</div>
             <p className="text-xs text-muted mt-1">
-              When you click Apply and visit the job page, come back and click the apply button to log it. It will automatically appear in your Pipeline CRM with today's date.
+              Visit the job page, then come back and the application will already be saved with today's date.
             </p>
           </div>
         </div>
