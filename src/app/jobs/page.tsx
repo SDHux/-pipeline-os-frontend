@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { ExternalLink, RefreshCw, CheckCircle, Send, Loader2, Clock } from 'lucide-react'
+import { ExternalLink, RefreshCw, CheckCircle, Send, Loader2, Clock, MapPin, DollarSign } from 'lucide-react'
 import clsx from 'clsx'
 
 type Job = {
@@ -24,7 +24,9 @@ export default function JobsPage() {
   const [jobs, setJobs] = useState<Job[]>([])
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
+  const [applying, setApplying] = useState<string | null>(null)
   const [filter, setFilter] = useState<'all' | 'applied' | 'not-applied'>('all')
+  const [locationFilter, setLocationFilter] = useState<'all' | 'remote' | 'onsite'>('all')
 
   const fetchJobs = useCallback(async (refresh = false) => {
     try {
@@ -47,29 +49,45 @@ export default function JobsPage() {
   }
 
   const handleMarkApplied = async (jobId: string) => {
+    // Only update the specific job
     const job = jobs.find(j => j.id === jobId)
-    if (!job) return
+    if (!job || job.applied) return
+    
+    setApplying(jobId)
+    
+    // Update only this job in state
     setJobs(prev => prev.map(j => j.id === jobId ? { ...j, applied: true } : j))
-    await fetch('/api/applications', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        company_id: job.company_id,
-        company_name: job.company_name,
-        role: job.title,
-        status: 'Applied',
-        date_applied: new Date().toISOString().split('T')[0],
-        job_url: job.url,
-        is_greenhouse: job.is_greenhouse,
-        salary: job.salary,
-        score: job.icp_score,
-      }),
-    })
+    
+    try {
+      await fetch('/api/applications', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          company_id: job.company_id,
+          company_name: job.company_name,
+          role: job.title,
+          status: 'Applied',
+          date_applied: new Date().toISOString().split('T')[0],
+          job_url: job.url,
+          is_greenhouse: job.is_greenhouse,
+          salary: job.salary,
+          score: job.icp_score,
+        }),
+      })
+    } catch (e) {
+      console.error('Failed to log application', e)
+      // Revert if API call failed
+      setJobs(prev => prev.map(j => j.id === jobId ? { ...j, applied: false } : j))
+    } finally {
+      setApplying(null)
+    }
   }
 
   const filtered = jobs.filter(j => {
-    if (filter === 'applied') return j.applied
-    if (filter === 'not-applied') return !j.applied
+    if (filter === 'applied' && !j.applied) return false
+    if (filter === 'not-applied' && j.applied) return false
+    if (locationFilter === 'remote' && !j.remote) return false
+    if (locationFilter === 'onsite' && j.remote) return false
     return true
   })
 
@@ -88,7 +106,7 @@ export default function JobsPage() {
         <div>
           <h1 className="text-2xl font-display font-bold text-white">Job Openings</h1>
           <p className="text-muted text-sm mt-1">
-            {jobs.length} roles from your target companies
+            {jobs.length} roles · US only · AE level
           </p>
         </div>
         <button onClick={handleRefresh} disabled={refreshing} className="btn-secondary flex items-center gap-2">
@@ -111,26 +129,45 @@ export default function JobsPage() {
         ))}
       </div>
 
-      {/* Filter tabs */}
-      <div className="flex gap-2">
-        {[
-          { key: 'all', label: 'All Roles' },
-          { key: 'not-applied', label: 'Not Applied' },
-          { key: 'applied', label: 'Applied' },
-        ].map(f => (
-          <button
-            key={f.key}
-            onClick={() => setFilter(f.key as typeof filter)}
-            className={clsx(
-              'px-4 py-2 rounded-lg text-sm font-medium border transition-all duration-200',
-              filter === f.key
-                ? 'bg-accent text-obsidian border-accent'
-                : 'bg-surface border-border text-muted hover:text-white hover:border-accent/30'
-            )}
-          >
-            {f.label}
-          </button>
-        ))}
+      {/* Filters */}
+      <div className="flex gap-2 flex-wrap">
+        <div className="flex gap-1 bg-surface border border-border rounded-lg p-1">
+          {[
+            { key: 'all', label: 'All' },
+            { key: 'not-applied', label: 'Not Applied' },
+            { key: 'applied', label: 'Applied' },
+          ].map(f => (
+            <button
+              key={f.key}
+              onClick={() => setFilter(f.key as typeof filter)}
+              className={clsx(
+                'px-3 py-1.5 rounded-md text-xs font-medium transition-all duration-200',
+                filter === f.key ? 'bg-accent text-obsidian' : 'text-muted hover:text-white'
+              )}
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
+
+        <div className="flex gap-1 bg-surface border border-border rounded-lg p-1">
+          {[
+            { key: 'all', label: 'All Locations' },
+            { key: 'remote', label: 'Remote' },
+            { key: 'onsite', label: 'On-site' },
+          ].map(f => (
+            <button
+              key={f.key}
+              onClick={() => setLocationFilter(f.key as typeof locationFilter)}
+              className={clsx(
+                'px-3 py-1.5 rounded-md text-xs font-medium transition-all duration-200',
+                locationFilter === f.key ? 'bg-accent text-obsidian' : 'text-muted hover:text-white'
+              )}
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Jobs list */}
@@ -154,18 +191,27 @@ export default function JobsPage() {
                 <span className="font-display font-semibold text-white">{job.title}</span>
                 {job.is_greenhouse && <span className="badge badge-signal text-[10px]">Greenhouse</span>}
                 {job.applied && <span className="badge badge-accent text-[10px]">Applied ✓</span>}
-                {job.source === 'serpapi' && <span className="badge badge-muted text-[10px]">Live</span>}
+                {job.remote && <span className="badge badge-muted text-[10px]">Remote</span>}
               </div>
-              <div className="text-xs text-muted mt-0.5">
-                {job.company_name} · {job.location || 'Remote'}
+              <div className="flex items-center gap-3 mt-0.5 flex-wrap">
+                <span className="text-xs text-muted">{job.company_name}</span>
+                {job.location && (
+                  <span className="flex items-center gap-1 text-xs text-muted">
+                    <MapPin size={10} /> {job.location}
+                  </span>
+                )}
+                {job.salary && (
+                  <span className="flex items-center gap-1 text-xs text-signal font-mono">
+                    <DollarSign size={10} />{job.salary}
+                  </span>
+                )}
               </div>
-              {job.salary && <div className="text-xs text-signal font-mono mt-1">{job.salary}</div>}
             </div>
 
             <div className="text-right flex-shrink-0 hidden sm:block">
               <div
                 className="text-lg font-display font-bold"
-                style={{ color: job.icp_score >= 90 ? '#00ff88' : job.icp_score >= 80 ? '#00d4ff' : '#ffaa00' }}
+                style={{ color: job.icp_score >= 90 ? '#34d399' : job.icp_score >= 80 ? '#38bdf8' : '#fbbf24' }}
               >
                 {job.icp_score}
               </div>
@@ -185,9 +231,14 @@ export default function JobsPage() {
               {!job.applied ? (
                 <button
                   onClick={() => handleMarkApplied(job.id)}
+                  disabled={applying === job.id}
                   className="btn-primary flex items-center gap-1.5 text-xs px-3 py-1.5"
                 >
-                  <Send size={12} /> Apply
+                  {applying === job.id
+                    ? <Loader2 size={12} className="animate-spin" />
+                    : <Send size={12} />
+                  }
+                  Apply
                 </button>
               ) : (
                 <div className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-signal font-medium">
@@ -200,10 +251,10 @@ export default function JobsPage() {
 
         {filtered.length === 0 && (
           <div className="card text-center py-12">
-            <div className="text-muted text-sm">No jobs found.</div>
+            <div className="text-muted text-sm">No jobs match your filters.</div>
             <button onClick={handleRefresh} disabled={refreshing} className="btn-primary mt-4 text-sm flex items-center gap-2 mx-auto">
               <RefreshCw size={13} className={refreshing ? 'animate-spin' : ''} />
-              Load Jobs
+              Refresh Jobs
             </button>
           </div>
         )}
@@ -213,9 +264,9 @@ export default function JobsPage() {
         <div className="flex items-start gap-3">
           <Clock size={16} className="text-accent flex-shrink-0 mt-0.5" />
           <div>
-            <div className="text-sm font-medium text-white">Clicking Apply opens the job and logs it to your Pipeline CRM</div>
+            <div className="text-sm font-medium text-white">Clicking Apply opens the role and logs it to Pipeline CRM</div>
             <p className="text-xs text-muted mt-1">
-              Visit the job page, then come back and the application will already be saved with today's date.
+              One-click Greenhouse auto-apply coming soon. For now, the external link opens the application and your CRM is updated automatically.
             </p>
           </div>
         </div>
